@@ -7,6 +7,7 @@ import { MappingCasparCG, DeviceType, Mapping } from './mapping'
 import { TimelineState, TimelineResolvedObject } from 'superfly-timeline'
 import { CasparCG as StateNS, CasparCGState } from 'casparcg-state'
 import { Conductor } from '../conductor'
+import { DoOnTime } from '../doOnTime'
 
 // const BGLOADTIME = 1000 // the time we will look back to schedule a loadbg command.
 
@@ -43,8 +44,9 @@ export class CasparCGDevice extends Device {
 	private _ccgState: CasparCGState
 	private _queue: { [key: string]: number } = {}
 	private _commandReceiver: (time: number, cmd: CommandNS.IAMCPCommand) => Promise<any>
-	private _timeToTimecodeMap: {time: number, timecode: number} = { time: 0, timecode: 0 }
-	private _timeBase: {[channel: string]: number} | number = {}
+	// private _timeToTimecodeMap: {time: number, timecode: number} = { time: 0, timecode: 0 }
+	// private _timeBase: {[channel: string]: number} | number = {}
+	private _doOnTime: DoOnTime
 
 	constructor (deviceId: string, deviceOptions: CasparCGDeviceOptions, options, conductor: Conductor) {
 		super(deviceId, deviceOptions, options)
@@ -52,7 +54,7 @@ export class CasparCGDevice extends Device {
 		if (deviceOptions.options) {
 			if (deviceOptions.options.commandReceiver) this._commandReceiver = deviceOptions.options.commandReceiver
 			else this._commandReceiver = this._defaultCommandReceiver
-			if (deviceOptions.options.timeBase) this._timeBase = deviceOptions.options.timeBase
+			// if (deviceOptions.options.timeBase) this._timeBase = deviceOptions.options.timeBase
 		}
 
 		this._ccgState = new CasparCGState({
@@ -88,6 +90,10 @@ export class CasparCGDevice extends Device {
 			}
 		})
 
+		this._doOnTime = new DoOnTime(() => {
+			return this.getCurrentTime()
+		})
+
 		return Promise.all([
 			new Promise((resolve, reject) => {
 				this._ccg.info()
@@ -103,28 +109,29 @@ export class CasparCGDevice extends Device {
 					resolve(true)
 				}).catch((e) => reject(e))
 			}), new Promise((resolve, reject) => {
+				resolve()
+				reject = reject
+				// if (connectionOptions.syncTimecode) {
+				// 	this._ccg.time(1).then((cmd) => { // @todo: keep time per channel
+				// 		let segments = (cmd.response.data as string).split(':')
+				// 		let time = 0
 
-				if (connectionOptions.syncTimecode) {
-					this._ccg.time(1).then((cmd) => { // @todo: keep time per channel
-						let segments = (cmd.response.data as string).split(':')
-						let time = 0
+				// 		// fields:
+				// 		time += Number(segments[3]) * 1000 / 50
+				// 		// seconds
+				// 		time += Number(segments[2]) * 1000
+				// 		// minutes
+				// 		time += Number(segments[1]) * 60 * 1000
+				// 		// hours
+				// 		time += Number(segments[0]) * 60 * 60 * 1000
 
-						// fields:
-						time += Number(segments[3]) * 1000 / 50
-						// seconds
-						time += Number(segments[2]) * 1000
-						// minutes
-						time += Number(segments[1]) * 60 * 1000
-						// hours
-						time += Number(segments[0]) * 60 * 60 * 1000
-
-						this._timeToTimecodeMap = { time: this.getCurrentTime(), timecode: time }
-						resolve(true)
-					}).catch(() => reject())
-				} else {
-					this._timeToTimecodeMap = { time: 0, timecode: 0 }
-					resolve(true)
-				}
+				// 		this._timeToTimecodeMap = { time: this.getCurrentTime(), timecode: time }
+				// 		resolve(true)
+				// 	}).catch(() => reject())
+				// } else {
+				// 	this._timeToTimecodeMap = { time: 0, timecode: 0 }
+				// 	resolve(true)
+				// }
 			})
 		]).then(() => {
 			return true
@@ -149,11 +156,14 @@ export class CasparCGDevice extends Device {
 			this._log('CasparCG State not initialized yet')
 			return
 		}
+		console.log('handle', newState)
 
 		let oldState = this.getStateBefore(newState.time) || { time: 0, LLayers: {}, GLayers: {} }
 
 		let newCasparState = this.convertStateToCaspar(newState)
 		let oldCasparState = this.convertStateToCaspar(oldState)
+		console.log('old', oldCasparState)
+		console.log('new', newCasparState)
 
 		let commandsToAchieveState: Array<CommandNS.IAMCPCommandVO> = this._diffStates(oldCasparState, newCasparState)
 
@@ -197,11 +207,12 @@ export class CasparCGDevice extends Device {
 	}
 
 	get queue () {
-		if (this._queue) {
-			return _.map(this._queue, (val, index) => [ val, index ])
-		} else {
-			return []
-		}
+		// if (this._queue) {
+		// 	return _.map(this._queue, (val, index) => [ val, index ])
+		// } else {
+		// 	return []
+		// }
+		return this._doOnTime.getQueue()
 	}
 
 	/**
@@ -405,27 +416,27 @@ export class CasparCGDevice extends Device {
 			// console.log('channels', channels)
 
 			let p = Promise.resolve()
-			_.each(channels, (channel: any) => {
+			// _.each(channels, (channel: any) => {
 
-				let channelNo = channel.channel
-				// let fps = channel.channelRate
-				let startTime
-				p = p.then(() => {
+			// 	let channelNo = channel.channel
+			// 	// let fps = channel.channelRate
+			// 	let startTime
+			// 	p = p.then(() => {
 
-					startTime = this.getCurrentTime()
-					return this._commandReceiver(startTime, new AMCP.CustomCommand({
-						command: (
-							'TIME ' + channelNo + ' ' + this.convertTimeToTimecode(startTime, channelNo)
-						)
-					}))
-				})
-				.then(() => {
-					let duration = this.getCurrentTime() - startTime
-					if (duration > 20) { // @todo: acceptable time is dependent on fps
-						throw Error('Caspar Time command took too long ("' + duration + '")')
-					}
-				})
-			})
+			// 		startTime = this.getCurrentTime()
+			// 		return this._commandReceiver(startTime, new AMCP.CustomCommand({
+			// 			command: (
+			// 				'TIME ' + channelNo + ' ' + this.convertTimeToTimecode(startTime, channelNo)
+			// 			)
+			// 		}))
+			// 	})
+			// 	.then(() => {
+			// 		let duration = this.getCurrentTime() - startTime
+			// 		if (duration > 20) { // @todo: acceptable time is dependent on fps
+			// 			throw Error('Caspar Time command took too long ("' + duration + '")')
+			// 		}
+			// 	})
+			// })
 			// Clear all channels (?)
 			p = p.then(() => {
 				if (okToDestoryStuff) {
@@ -468,46 +479,54 @@ export class CasparCGDevice extends Device {
 	}
 
 	private _addToQueue (commandsToAchieveState: Array<CommandNS.IAMCPCommandVO>, oldState: TimelineState, time: number) {
+		oldState = oldState
+		// _.each(commandsToAchieveState, (cmd: CommandNS.IAMCPCommandVO) => {
+		// 	if (cmd._commandName === 'PlayCommand' && cmd._objectParams.clip !== 'empty') {
+		// 		if (oldState.time > 0 && time > this.getCurrentTime()) { // @todo: put the loadbg command just after the oldState.time when convenient?
+		// 			// console.log('making a loadbg out of it ', time , this.getCurrentTime())
+		// 			let loadbgCmd = Object.assign({}, cmd) // make a shallow copy
+		// 			loadbgCmd._commandName = 'LoadbgCommand'
+
+		// 			let command = AMCPUtil.deSerialize(loadbgCmd as CommandNS.IAMCPCommandVO, 'id')
+		// 			let scheduleCommand = command
+
+		// 			if (oldState.time >= this.getCurrentTime()) {
+		// 				scheduleCommand = new AMCP.ScheduleSetCommand({
+		// 					token: command.token,
+		// 					timecode: this.convertTimeToTimecode(oldState.time, command.channel),
+		// 					command
+		// 				})
+		// 			}
+		// 			this._doCommand(scheduleCommand)
+
+		// 			cmd._objectParams = {
+		// 				channel: cmd.channel,
+		// 				layer: cmd.layer,
+		// 				noClear: cmd._objectParams.noClear
+		// 			}
+		// 		}
+		// 	}
+
+		// 	let command = AMCPUtil.deSerialize(cmd, 'id')
+		// 	let scheduleCommand = new AMCP.ScheduleSetCommand({
+		// 		token: command.token,
+		// 		timecode: this.convertTimeToTimecode(time, command.channel),
+		// 		command
+		// 	})
+
+		// 	if (time <= this.getCurrentTime()) {
+		// 		this._doCommand(command)
+		// 	} else {
+		// 		this._doCommand(scheduleCommand)
+		// 		this._queue[command.token] = time
+		// 	}
+		// })
 		_.each(commandsToAchieveState, (cmd: CommandNS.IAMCPCommandVO) => {
-			if (cmd._commandName === 'PlayCommand' && cmd._objectParams.clip !== 'empty') {
-				if (oldState.time > 0 && time > this.getCurrentTime()) { // @todo: put the loadbg command just after the oldState.time when convenient?
-					// console.log('making a loadbg out of it ', time , this.getCurrentTime())
-					let loadbgCmd = Object.assign({}, cmd) // make a shallow copy
-					loadbgCmd._commandName = 'LoadbgCommand'
 
-					let command = AMCPUtil.deSerialize(loadbgCmd as CommandNS.IAMCPCommandVO, 'id')
-					let scheduleCommand = command
-
-					if (oldState.time >= this.getCurrentTime()) {
-						scheduleCommand = new AMCP.ScheduleSetCommand({
-							token: command.token,
-							timecode: this.convertTimeToTimecode(oldState.time, command.channel),
-							command
-						})
-					}
-					this._doCommand(scheduleCommand)
-
-					cmd._objectParams = {
-						channel: cmd.channel,
-						layer: cmd.layer,
-						noClear: cmd._objectParams.noClear
-					}
-				}
-			}
-
-			let command = AMCPUtil.deSerialize(cmd, 'id')
-			let scheduleCommand = new AMCP.ScheduleSetCommand({
-				token: command.token,
-				timecode: this.convertTimeToTimecode(time, command.channel),
-				command
-			})
-
-			if (time <= this.getCurrentTime()) {
-				this._doCommand(command)
-			} else {
-				this._doCommand(scheduleCommand)
-				this._queue[command.token] = time
-			}
+			// add the new commands to the queue:
+			this._doOnTime.queue(time, (cmd: CommandNS.IAMCPCommandVO) => {
+				return this._commandReceiver(time, AMCPUtil.deSerialize(cmd, 'id'))
+			}, cmd)
 		})
 	}
 	private _defaultCommandReceiver (time: number, cmd): Promise<any> {
@@ -525,23 +544,23 @@ export class CasparCGDevice extends Device {
 		})
 	}
 
-	private convertTimeToTimecode (time: number, channel: number): string {
-		let relTime = time - this._timeToTimecodeMap.time
-		let timecodeTime = this._timeToTimecodeMap.timecode + relTime
+	// private convertTimeToTimecode (time: number, channel: number): string {
+	// 	let relTime = time - this._timeToTimecodeMap.time
+	// 	let timecodeTime = this._timeToTimecodeMap.timecode + relTime
 
-		let timeBase = (
-			typeof this._timeBase === 'object' ?
-			this._timeBase[channel + ''] :
-			this._timeBase
-		) || 25
+	// 	let timeBase = (
+	// 		typeof this._timeBase === 'object' ?
+	// 		this._timeBase[channel + ''] :
+	// 		this._timeBase
+	// 	) || 25
 
-		let timecode = [
-			('0' + (Math.floor(timecodeTime / 3.6e6) % 24)).substr(-2),
-			('0' + (Math.floor(timecodeTime / 6e4) % 60)).substr(-2),
-			('0' + (Math.floor(timecodeTime / 1e3) % 60)).substr(-2),
-			('0' + (Math.floor(timecodeTime / (1000 / timeBase)) % timeBase)).substr(-(timeBase + '').length)
-		]
+	// 	let timecode = [
+	// 		('0' + (Math.floor(timecodeTime / 3.6e6) % 24)).substr(-2),
+	// 		('0' + (Math.floor(timecodeTime / 6e4) % 60)).substr(-2),
+	// 		('0' + (Math.floor(timecodeTime / 1e3) % 60)).substr(-2),
+	// 		('0' + (Math.floor(timecodeTime / (1000 / timeBase)) % timeBase)).substr(-(timeBase + '').length)
+	// 	]
 
-		return timecode.join(':')
-	}
+	// 	return timecode.join(':')
+	// }
 }
