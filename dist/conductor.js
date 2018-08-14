@@ -123,7 +123,7 @@ class Conductor extends events_1.EventEmitter {
                 newDevice = new casparCG_1.CasparCGDevice(deviceId, deviceOptions, options, this);
             }
             else if (deviceOptions.type === mapping_1.DeviceType.ATEM) {
-                newDevice = new atem_1.AtemDevice(deviceId, deviceOptions, options);
+                newDevice = new atem_1.AtemDevice(deviceId, deviceOptions, options, this);
             }
             else if (deviceOptions.type === mapping_1.DeviceType.HTTPSEND) {
                 newDevice = new httpSend_1.HttpSendDevice(deviceId, deviceOptions, options);
@@ -185,11 +185,11 @@ class Conductor extends events_1.EventEmitter {
     /**
      * Send a makeReady-trigger to all devices
      */
-    devicesMakeReady(okToDestoryStuff) {
+    devicesMakeReady(okToDestroyStuff) {
         let p = Promise.resolve();
         _.each(this.devices, (device) => {
             p = p.then(() => {
-                return device.makeReady(okToDestoryStuff);
+                return device.makeReady(okToDestroyStuff);
             });
         });
         this._resolveTimeline();
@@ -198,11 +198,11 @@ class Conductor extends events_1.EventEmitter {
     /**
      * Send a standDown-trigger to all devices
      */
-    devicesStandDown(okToDestoryStuff) {
+    devicesStandDown(okToDestroyStuff) {
         let p = Promise.resolve();
         _.each(this.devices, (device) => {
             p = p.then(() => {
-                return device.standDown(okToDestoryStuff);
+                return device.standDown(okToDestroyStuff);
             });
         });
         return p;
@@ -273,7 +273,11 @@ class Conductor extends events_1.EventEmitter {
             let getFilteredLayers = (layers, device) => {
                 let filteredState = {};
                 _.each(layers, (o, layerId) => {
+                    const oExt = o;
                     let mapping = this._mapping[o.LLayer + ''];
+                    if (!mapping && oExt.originalLLayer) {
+                        mapping = this._mapping[oExt.originalLLayer];
+                    }
                     if (mapping) {
                         if (mapping.deviceId === device.deviceId &&
                             mapping.device === device.deviceType) {

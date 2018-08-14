@@ -60,6 +60,7 @@ export declare class LawoDevice extends Device {
     private _doOnTime;
     private _device;
     private _savedNodes;
+    private _connected;
     private _commandReceiver;
     private _sourcesPath;
     private _rampMotorFunctionPath;
@@ -70,6 +71,7 @@ export declare class LawoDevice extends Device {
     init(): Promise<boolean>;
     handleState(newState: TimelineState): void;
     clearFuture(clearAfterTime: number): void;
+    readonly canConnect: boolean;
     readonly connected: boolean;
     convertStateToLawo(state: TimelineState): LawoState;
     readonly deviceType: DeviceType;
@@ -79,6 +81,7 @@ export declare class LawoDevice extends Device {
         time: number;
     }[];
     mapping: Mappings;
+    private _setConnected;
     private _addToQueue;
     private _diffStates;
     private _getNodeByPath;

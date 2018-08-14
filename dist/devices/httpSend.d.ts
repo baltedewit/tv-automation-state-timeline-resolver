@@ -16,6 +16,7 @@ export declare class HttpSendDevice extends Device {
     init(): Promise<boolean>;
     handleState(newState: TimelineState): void;
     clearFuture(clearAfterTime: number): void;
+    readonly canConnect: boolean;
     readonly connected: boolean;
     convertStateToHttpSend(state: TimelineState): TimelineState;
     readonly deviceType: DeviceType;

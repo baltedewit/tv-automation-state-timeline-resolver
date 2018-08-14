@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { TimelineObject, TriggerType } from 'superfly-timeline';
 import { Device, DeviceOptions } from './devices/device';
-import { Mappings } from './devices/mapping';
+import { Mappings, TimelineResolvedObjectExtended } from './devices/mapping';
 import { EventEmitter } from 'events';
 export interface TimelineContentObject extends TimelineObject {
 }
@@ -42,7 +42,7 @@ export declare class Conductor extends EventEmitter {
      */
     getCurrentTime(): number;
     mapping: Mappings;
-    timeline: Array<TimelineContentObject>;
+    timeline: Array<TimelineContentObject | TimelineResolvedObjectExtended>;
     getDevices(): Array<Device>;
     getDevice(deviceId: string): Device;
     addDevice(deviceId: any, deviceOptions: DeviceOptions): Promise<Device>;
@@ -56,11 +56,11 @@ export declare class Conductor extends EventEmitter {
     /**
      * Send a makeReady-trigger to all devices
      */
-    devicesMakeReady(okToDestoryStuff?: boolean): Promise<void>;
+    devicesMakeReady(okToDestroyStuff?: boolean): Promise<void>;
     /**
      * Send a standDown-trigger to all devices
      */
-    devicesStandDown(okToDestoryStuff?: boolean): Promise<void>;
+    devicesStandDown(okToDestroyStuff?: boolean): Promise<void>;
     /**
      * This is the main resolve-loop.
      */

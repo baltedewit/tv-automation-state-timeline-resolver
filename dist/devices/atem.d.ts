@@ -2,6 +2,7 @@ import { Device, DeviceOptions } from './device';
 import { DeviceType } from './mapping';
 import { TimelineState } from 'superfly-timeline';
 import { State as DeviceState } from 'atem-state';
+import { Conductor } from '../conductor';
 /**
  * This is a wrapper for the Atem Device. Commands to any and all atem devices will be sent through here.
  */
@@ -27,8 +28,9 @@ export declare class AtemDevice extends Device {
     private _state;
     private _initialized;
     private _connected;
+    private _conductor;
     private _commandReceiver;
-    constructor(deviceId: string, deviceOptions: AtemDeviceOptions, options: any);
+    constructor(deviceId: string, deviceOptions: AtemDeviceOptions, options: any, conductor: Conductor);
     /**
      * Initiates the connection with the ATEM through the atem-connection lib.
      */
@@ -36,6 +38,7 @@ export declare class AtemDevice extends Device {
     terminate(): Promise<boolean>;
     handleState(newState: TimelineState): void;
     clearFuture(clearAfterTime: number): void;
+    readonly canConnect: boolean;
     readonly connected: boolean;
     convertStateToAtem(state: TimelineState): DeviceState;
     readonly deviceType: DeviceType;

@@ -44,6 +44,9 @@ class AbstractDevice extends device_1.Device {
         // Clear any scheduled commands after this time
         this._doOnTime.clearQueueAfter(clearAfterTime);
     }
+    get canConnect() {
+        return false;
+    }
     get connected() {
         return false;
     }

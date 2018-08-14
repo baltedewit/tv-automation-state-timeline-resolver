@@ -5,7 +5,6 @@ const device_1 = require("./device");
 const casparcg_connection_1 = require("casparcg-connection");
 const mapping_1 = require("./mapping");
 const casparcg_state_1 = require("casparcg-state");
-const doOnTime_1 = require("../doOnTime");
 var TimelineContentTypeCasparCg;
 (function (TimelineContentTypeCasparCg) {
     TimelineContentTypeCasparCg["VIDEO"] = "video";
@@ -51,6 +50,8 @@ class CasparCGDevice extends device_1.Device {
             }
         });
         this._ccg.on(casparcg_connection_1.CasparCGSocketStatusEvent.CONNECTED, (event) => {
+            this.makeReady(false) // always make sure timecode is correct, setting it can never do bad
+                .catch((e) => this.emit('error', e));
             if (event.valueOf().virginServer === true) {
                 // a "virgin server" was just restarted (so it is cleared & black).
                 // Otherwise it was probably just a loss of connection
@@ -59,46 +60,19 @@ class CasparCGDevice extends device_1.Device {
                 this._conductor.resetResolver(); // trigger a re-calc
             }
         });
-        this._doOnTime = new doOnTime_1.DoOnTime(() => {
-            return this.getCurrentTime();
-        });
-        return Promise.all([
-            new Promise((resolve, reject) => {
-                this._ccg.info()
-                    .then((command) => {
-                    this._ccgState.initStateFromChannelInfo(_.map(command.response.data, (obj) => {
-                        return {
-                            channelNo: obj.channel,
-                            videoMode: obj.format.toUpperCase(),
-                            fps: obj.channelRate
-                        };
-                    }));
-                    resolve(true);
-                }).catch((e) => reject(e));
-            }), new Promise((resolve, reject) => {
-                resolve();
-                reject = reject;
-                // if (connectionOptions.syncTimecode) {
-                // 	this._ccg.time(1).then((cmd) => { // @todo: keep time per channel
-                // 		let segments = (cmd.response.data as string).split(':')
-                // 		let time = 0
-                // 		// fields:
-                // 		time += Number(segments[3]) * 1000 / 50
-                // 		// seconds
-                // 		time += Number(segments[2]) * 1000
-                // 		// minutes
-                // 		time += Number(segments[1]) * 60 * 1000
-                // 		// hours
-                // 		time += Number(segments[0]) * 60 * 60 * 1000
-                // 		this._timeToTimecodeMap = { time: this.getCurrentTime(), timecode: time }
-                // 		resolve(true)
-                // 	}).catch(() => reject())
-                // } else {
-                // 	this._timeToTimecodeMap = { time: 0, timecode: 0 }
-                // 	resolve(true)
-                // }
-            })
-        ]).then(() => {
+        return new Promise((resolve, reject) => {
+            this._ccg.info()
+                .then((command) => {
+                this._ccgState.initStateFromChannelInfo(_.map(command.response.data, (obj) => {
+                    return {
+                        channelNo: obj.channel,
+                        videoMode: obj.format.toUpperCase(),
+                        fps: obj.channelRate
+                    };
+                }));
+                resolve(true);
+            }).catch((e) => reject(e));
+        }).then(() => {
             return true;
         });
     }
@@ -139,7 +113,7 @@ class CasparCGDevice extends device_1.Device {
         }
         // console.log('commandsToAchieveState', commandsToAchieveState)
         // add the new commands to the queue:
-        this._addToQueue(commandsToAchieveState, oldState, newState.time);
+        this._addToQueue(commandsToAchieveState, newState.time);
         // store the new state, for later use:
         this.setState(newState);
     }
@@ -150,6 +124,9 @@ class CasparCGDevice extends device_1.Device {
                 this._doCommand(new casparcg_connection_1.AMCP.ScheduleRemoveCommand(token));
             }
         }
+    }
+    get canConnect() {
+        return true;
     }
     get connected() {
         // Returns connection status
@@ -176,8 +153,13 @@ class CasparCGDevice extends device_1.Device {
     convertStateToCaspar(timelineState) {
         const caspar = new casparcg_state_1.CasparCG.State();
         _.each(timelineState.LLayers, (layer, layerName) => {
-            const foundMapping = this.mapping[layerName];
-            if (foundMapping.device === mapping_1.DeviceType.CASPARCG &&
+            const layerExt = layer;
+            let foundMapping = this.mapping[layerName];
+            if (!foundMapping && layerExt.isBackground && layerExt.originalLLayer) {
+                foundMapping = this.mapping[layerExt.originalLLayer];
+            }
+            if (foundMapping &&
+                foundMapping.device === mapping_1.DeviceType.CASPARCG &&
                 _.has(foundMapping, 'channel') &&
                 _.has(foundMapping, 'layer')) {
                 const mapping = {
@@ -200,7 +182,8 @@ class CasparCGDevice extends device_1.Device {
                         content: casparcg_state_1.CasparCG.LayerContentType.MEDIA,
                         media: layer.content.attributes.file,
                         playTime: layer.resolved.startTime || null,
-                        playing: true,
+                        pauseTime: layer.resolved.pauseTime || null,
+                        playing: layer.resolved.playing !== undefined ? layer.resolved.playing : true,
                         looping: layer.content.attributes.loop,
                         seek: layer.content.attributes.seek
                     };
@@ -269,6 +252,7 @@ class CasparCGDevice extends device_1.Device {
                             channel: layer.content.attributes.channel,
                             layer: layer.content.attributes.layer
                         },
+                        mode: layer.content.attributes.mode || undefined,
                         playing: true,
                         playTime: null // layer.resolved.startTime || null
                     };
@@ -308,10 +292,10 @@ class CasparCGDevice extends device_1.Device {
                                 let media = stateLayer.media;
                                 let transitions = {};
                                 if (layer.content.transitions.inTransition) {
-                                    transitions.inTransition = new casparcg_state_1.CasparCG.Transition(layer.content.transitions.inTransition.type, layer.content.transitions.inTransition.duration, layer.content.transitions.inTransition.easing, layer.content.transitions.inTransition.direction);
+                                    transitions.inTransition = new casparcg_state_1.CasparCG.Transition(layer.content.transitions.inTransition.type, layer.content.transitions.inTransition.duration || layer.content.transitions.inTransition.maskFile, layer.content.transitions.inTransition.easing || layer.content.transitions.inTransition.delay, layer.content.transitions.inTransition.direction || layer.content.transitions.inTransition.overlayFile);
                                 }
                                 if (layer.content.transitions.outTransition) {
-                                    transitions.outTransition = new casparcg_state_1.CasparCG.Transition(layer.content.transitions.outTransition.type, layer.content.transitions.outTransition.duration, layer.content.transitions.outTransition.easing, layer.content.transitions.outTransition.direction);
+                                    transitions.outTransition = new casparcg_state_1.CasparCG.Transition(layer.content.transitions.outTransition.type, layer.content.transitions.outTransition.duration || layer.content.transitions.inTransition.maskFile, layer.content.transitions.outTransition.easing || layer.content.transitions.inTransition.delay, layer.content.transitions.outTransition.direction || layer.content.transitions.inTransition.overlayFile);
                                 }
                                 stateLayer.media = new casparcg_state_1.CasparCG.TransitionObject(media, {
                                     inTransition: transitions.inTransition,
@@ -332,13 +316,34 @@ class CasparCGDevice extends device_1.Device {
                         stateLayer.mixer = mixer;
                     }
                     stateLayer.layerNo = mapping.layer;
-                    channel.layers[mapping.layer] = stateLayer;
+                }
+                if (stateLayer && !layerExt.isBackground) {
+                    const prev = channel.layers[mapping.layer] || {};
+                    channel.layers[mapping.layer] = _.extend(stateLayer, _.pick(prev, 'nextUp'));
+                }
+                else if (stateLayer && layerExt.isBackground) {
+                    let s = stateLayer;
+                    s.auto = false;
+                    const res = channel.layers[mapping.layer];
+                    if (!res) {
+                        let l = {
+                            layerNo: mapping.layer,
+                            content: casparcg_state_1.CasparCG.LayerContentType.NOTHING,
+                            playing: false,
+                            pauseTime: 0,
+                            nextUp: s
+                        };
+                        channel.layers[mapping.layer] = l;
+                    }
+                    else {
+                        channel.layers[mapping.layer].nextUp = s;
+                    }
                 }
             }
         });
         return caspar;
     }
-    makeReady(okToDestoryStuff) {
+    makeReady(okToDestroyStuff) {
         // Sync Caspar Time to our time:
         return this._ccg.info()
             .then((command) => {
@@ -366,7 +371,7 @@ class CasparCGDevice extends device_1.Device {
             // })
             // Clear all channels (?)
             p = p.then(() => {
-                if (okToDestoryStuff) {
+                if (okToDestroyStuff) {
                     return Promise.all(_.map(channels, (channel) => {
                         return this._commandReceiver(this.getCurrentTime(), new casparcg_connection_1.AMCP.ClearCommand({
                             channel: channel.channel
@@ -395,14 +400,8 @@ class CasparCGDevice extends device_1.Device {
         this._commandReceiver(this.getCurrentTime(), command)
             .catch(e => this.emit('error', e));
     }
-    _addToQueue(commandsToAchieveState, oldState, time) {
-        oldState = oldState;
+    _addToQueue(commandsToAchieveState, time) {
         // _.each(commandsToAchieveState, (cmd: CommandNS.IAMCPCommandVO) => {
-        // 	if (cmd._commandName === 'PlayCommand' && cmd._objectParams.clip !== 'empty') {
-        // 		if (oldState.time > 0 && time > this.getCurrentTime()) { // @todo: put the loadbg command just after the oldState.time when convenient?
-        // 			// console.log('making a loadbg out of it ', time , this.getCurrentTime())
-        // 			let loadbgCmd = Object.assign({}, cmd) // make a shallow copy
-        // 			loadbgCmd._commandName = 'LoadbgCommand'
         // 			let command = AMCPUtil.deSerialize(loadbgCmd as CommandNS.IAMCPCommandVO, 'id')
         // 			let scheduleCommand = command
         // 			if (oldState.time >= this.getCurrentTime()) {
@@ -447,8 +446,9 @@ class CasparCGDevice extends device_1.Device {
             if (this._queue[resCommand.token]) {
                 delete this._queue[resCommand.token];
             }
-        }).catch((e) => {
-            this._log(e);
+        }).catch((error) => {
+            this.emit('error', { cmdName: cmd.name, cmd, error });
+            this._log(cmd, error);
             if (cmd.name === 'ScheduleSetCommand') {
                 delete this._queue[cmd.getParam('command').token];
             }

@@ -15,7 +15,6 @@ export interface CasparCGDeviceOptions extends DeviceOptions {
 export interface CasparCGOptions {
     host: string;
     port: number;
-    syncTimecode?: boolean;
 }
 export declare enum TimelineContentTypeCasparCg {
     VIDEO = "video",
@@ -46,6 +45,7 @@ export declare class CasparCGDevice extends Device {
      */
     handleState(newState: TimelineState): void;
     clearFuture(clearAfterTime: number): void;
+    readonly canConnect: boolean;
     readonly connected: boolean;
     readonly deviceType: DeviceType;
     readonly deviceName: string;
@@ -58,7 +58,7 @@ export declare class CasparCGDevice extends Device {
      * @param timelineState The timeline state to generate from.
      */
     convertStateToCaspar(timelineState: TimelineState): StateNS.State;
-    makeReady(okToDestoryStuff?: boolean): Promise<void>;
+    makeReady(okToDestroyStuff?: boolean): Promise<void>;
     private _diffStates;
     private _doCommand;
     private _addToQueue;

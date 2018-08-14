@@ -17,6 +17,7 @@ export declare class AbstractDevice extends Device {
     init(): Promise<boolean>;
     handleState(newState: TimelineState): void;
     clearFuture(clearAfterTime: number): void;
+    readonly canConnect: boolean;
     readonly connected: boolean;
     convertStateToAbstract(state: TimelineState): TimelineState;
     readonly deviceType: DeviceType;

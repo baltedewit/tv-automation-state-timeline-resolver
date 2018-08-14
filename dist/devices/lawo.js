@@ -14,6 +14,7 @@ class LawoDevice extends device_1.Device {
     constructor(deviceId, deviceOptions, options) {
         super(deviceId, deviceOptions, options);
         this._savedNodes = [];
+        this._connected = false;
         if (deviceOptions.options) {
             if (deviceOptions.options.commandReceiver) {
                 this._commandReceiver = deviceOptions.options.commandReceiver;
@@ -42,14 +43,17 @@ class LawoDevice extends device_1.Device {
         this._device.on('error', (e) => {
             if ((e.message + '').match(/econnrefused/i) ||
                 (e.message + '').match(/disconnected/i)) {
-                this.emit('connectionChanged', false);
+                this._setConnected(false);
             }
             else {
                 this.emit('error', e);
             }
         });
         this._device.on('connected', () => {
-            this.emit('connectionChanged', true);
+            this._setConnected(true);
+        });
+        this._device.on('disconnected', () => {
+            this._setConnected(false);
         });
     }
     /**
@@ -93,8 +97,11 @@ class LawoDevice extends device_1.Device {
         // Clear any scheduled commands after this time
         this._doOnTime.clearQueueAfter(clearAfterTime);
     }
+    get canConnect() {
+        return true;
+    }
     get connected() {
-        return false;
+        return this._connected;
     }
     convertStateToLawo(state) {
         // convert the timeline state into something we can use
@@ -133,6 +140,12 @@ class LawoDevice extends device_1.Device {
     }
     get mapping() {
         return super.mapping;
+    }
+    _setConnected(connected) {
+        if (this._connected !== connected) {
+            this._connected = connected;
+            this.emit('connectionChanged', this._connected);
+        }
     }
     _addToQueue(commandsToAchieveState, time) {
         _.each(commandsToAchieveState, (cmd) => {
