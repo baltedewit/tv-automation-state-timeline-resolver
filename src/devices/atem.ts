@@ -1,12 +1,13 @@
 import * as _ from 'underscore'
 import * as underScoreDeepExtend from 'underscore-deep-extend'
 import { Device, DeviceOptions } from './device'
-import { DeviceType, MappingAtem, MappingAtemType } from './mapping'
+import { DeviceType, MappingAtem, MappingAtemType, TimelineResolvedObjectExtended } from './mapping'
 
 import { TimelineState } from 'superfly-timeline'
 import { Atem, VideoState, Commands as AtemCommands } from 'atem-connection'
 import { AtemState, State as DeviceState, Defaults as StateDefault } from 'atem-state'
 import { DoOnTime } from '../doOnTime'
+import { Conductor } from '../conductor'
 
 _.mixin({ deepExtend: underScoreDeepExtend(_) })
 
@@ -42,10 +43,11 @@ export class AtemDevice extends Device {
 	private _state: AtemState
 	private _initialized: boolean = false
 	private _connected: boolean = false // note: ideally this should be replaced by this._device.connected
+	private _conductor: Conductor
 
 	private _commandReceiver: (time: number, cmd) => Promise<any>
 
-	constructor (deviceId: string, deviceOptions: AtemDeviceOptions, options) {
+	constructor (deviceId: string, deviceOptions: AtemDeviceOptions, options, conductor: Conductor) {
 		super(deviceId, deviceOptions, options)
 		if (deviceOptions.options) {
 			if (deviceOptions.options.commandReceiver) this._commandReceiver = deviceOptions.options.commandReceiver
@@ -55,6 +57,7 @@ export class AtemDevice extends Device {
 			return this.getCurrentTime()
 		})
 		this._doOnTime.on('error', e => this.emit('error', e))
+		this._conductor = conductor
 	}
 
 	/**
@@ -75,13 +78,16 @@ export class AtemDevice extends Device {
 				resolve(true)
 			})
 			this._device.on('connected', () => {
+				this.setState(this._device.state, this.getCurrentTime())
 				this._connected = true
 				this.emit('connectionChanged', true)
+				this._conductor.resetResolver()
 			})
 			this._device.on('disconnected', () => {
 				this._connected = false
 				this.emit('connectionChanged', false)
 			})
+			this._device.on('error', (e) => this.emit('error', e))
 		})
 	}
 	terminate (): Promise<boolean> {
@@ -105,9 +111,9 @@ export class AtemDevice extends Device {
 			this._log('Atem not initialized yet')
 			return
 		}
-		let oldState: TimelineState = this.getStateBefore(newState.time) || { time: 0, LLayers: {}, GLayers: {} }
+		let oldState = this.getStateBefore(newState.time) || this._getDefaultState()
 
-		let oldAtemState = this.convertStateToAtem(oldState)
+		let oldAtemState = oldState
 		let newAtemState = this.convertStateToAtem(newState)
 
 		// @ts-ignore
@@ -124,13 +130,16 @@ export class AtemDevice extends Device {
 		this._addToQueue(commandsToAchieveState, newState.time)
 
 		// store the new state, for later use:
-		this.setState(newState)
+		this.setState(newAtemState, newState.time)
 	}
 	clearFuture (clearAfterTime: number) {
 		// Clear any scheduled commands after this time
 		this._doOnTime.clearQueueAfter(clearAfterTime)
 		// Clear any scheduled commands after this time
 		// this._queue = _.reject(this._queue, (q) => { return q.time > clearAfterTime })
+	}
+	get canConnect (): boolean {
+		return true
 	}
 	get connected (): boolean {
 		return this._connected
@@ -145,8 +154,13 @@ export class AtemDevice extends Device {
 			.sort((a,b) => a.layerName.localeCompare(b.layerName))
 
 		_.each(sortedLayers, ({ tlObject, layerName }) => {
-			let content = tlObject.content
-			const mapping = this.mapping[layerName] as MappingAtem
+			const tlObjectExt = tlObject as TimelineResolvedObjectExtended
+			const content = tlObject.resolved || tlObject.content
+			let mapping = this.mapping[layerName] as MappingAtem
+			if (!mapping && tlObjectExt.originalLLayer) {
+				mapping = this.mapping[tlObjectExt.originalLLayer] as MappingAtem
+			}
+
 			if (mapping) {
 				if (mapping.index !== undefined && mapping.index >= 0) { // index must be 0 or higher
 					// 	obj = {}
@@ -154,29 +168,44 @@ export class AtemDevice extends Device {
 					// }
 					switch (mapping.mappingType) {
 						case MappingAtemType.MixEffect:
+							if (tlObjectExt.isBackground) {
+								break
+							}
 							if (content.type === TimelineContentTypeAtem.ME) {
 								let me = deviceState.video.ME[mapping.index]
 								if (me) deepExtend(me, content.attributes)
 							}
 							break
 						case MappingAtemType.DownStreamKeyer:
+							if (tlObjectExt.isBackground) {
+								break
+							}
 							if (content.type === TimelineContentTypeAtem.DSK) {
 								let dsk = deviceState.video.downstreamKeyers[mapping.index]
 								if (dsk) deepExtend(dsk, content.attributes)
 							}
 							break
 						case MappingAtemType.SuperSourceBox:
+							if (tlObjectExt.isBackground && (!tlObjectExt.originalLLayer || tlObjectExt.originalLLayer && state.LLayers[tlObjectExt.originalLLayer])) {
+								break
+							}
 							if (content.type === TimelineContentTypeAtem.SSRC) {
 								let ssrc = deviceState.video.superSourceBoxes
 								if (ssrc) deepExtend(ssrc, content.attributes.boxes)
 							}
 							break
 						case MappingAtemType.Auxilliary:
+							if (tlObjectExt.isBackground) {
+								break
+							}
 							if (content.type === TimelineContentTypeAtem.AUX) {
 								deviceState.video.auxilliaries[mapping.index] = content.attributes.input
 							}
 							break
 						case MappingAtemType.MediaPlayer:
+							if (tlObjectExt.isBackground) {
+								break
+							}
 							if (content.type === TimelineContentTypeAtem.MEDIAPLAYER) {
 								let ms = deviceState.media.players[mapping.index]
 								if (ms) deepExtend(ms, content.attributes)
@@ -225,13 +254,13 @@ export class AtemDevice extends Device {
 				}
 			}
 		}
-		for (let i = 0; i < this._device.state.video.downstreamKeyers.length; i++) {
+		for (let i = 0; i < Object.keys(this._device.state.video.downstreamKeyers).length; i++) {
 			deviceState.video.downstreamKeyers[i] = JSON.parse(JSON.stringify(StateDefault.Video.DownStreamKeyer))
 		}
 		for (let i = 0; i < this._device.state.info.capabilities.auxilliaries; i++) {
 			deviceState.video.auxilliaries[i] = JSON.parse(JSON.stringify(StateDefault.Video.defaultInput))
 		}
-		for (let i = 0; i < 4 /* @todo from _SSC */; i++) {
+		for (let i = 0; i < this._device.state.info.superSourceBoxes; i++) {
 			deviceState.video.superSourceBoxes[i] = JSON.parse(JSON.stringify(StateDefault.Video.SuperSourceBox))
 		}
 
