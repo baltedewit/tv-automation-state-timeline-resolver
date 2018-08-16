@@ -5,6 +5,7 @@ const device_1 = require("./device");
 const casparcg_connection_1 = require("casparcg-connection");
 const mapping_1 = require("./mapping");
 const casparcg_state_1 = require("casparcg-state");
+const doOnTime_1 = require("../doOnTime");
 var TimelineContentTypeCasparCg;
 (function (TimelineContentTypeCasparCg) {
     TimelineContentTypeCasparCg["VIDEO"] = "video";
@@ -59,6 +60,9 @@ class CasparCGDevice extends device_1.Device {
                 this.clearStates();
                 this._conductor.resetResolver(); // trigger a re-calc
             }
+        });
+        this._doOnTime = new doOnTime_1.DoOnTime(() => {
+            return this.getCurrentTime();
         });
         return new Promise((resolve, reject) => {
             this._ccg.info()

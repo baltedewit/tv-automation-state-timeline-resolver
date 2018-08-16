@@ -91,6 +91,10 @@ export class CasparCGDevice extends Device {
 			}
 		})
 
+		this._doOnTime = new DoOnTime(() => {
+			return this.getCurrentTime()
+		})
+
 		return new Promise((resolve, reject) => {
 			this._ccg.info()
 			.then((command) => {
