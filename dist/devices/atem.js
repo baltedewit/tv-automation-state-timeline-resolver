@@ -18,6 +18,7 @@ var TimelineContentTypeAtem;
     TimelineContentTypeAtem["DSK"] = "dsk";
     TimelineContentTypeAtem["AUX"] = "aux";
     TimelineContentTypeAtem["SSRC"] = "ssrc";
+    TimelineContentTypeAtem["SSRCPROPS"] = "ssrcProps";
     TimelineContentTypeAtem["MEDIAPLAYER"] = "mp";
 })(TimelineContentTypeAtem = exports.TimelineContentTypeAtem || (exports.TimelineContentTypeAtem = {}));
 class AtemDevice extends device_1.Device {
@@ -165,6 +166,16 @@ class AtemDevice extends device_1.Device {
                                     deepExtend(ssrc, content.attributes.boxes);
                             }
                             break;
+                        case mapping_1.MappingAtemType.SuperSourceProperties:
+                            if (tlObjectExt.isBackground && (!tlObjectExt.originalLLayer || tlObjectExt.originalLLayer && state.LLayers[tlObjectExt.originalLLayer])) {
+                                break;
+                            }
+                            if (content.type === TimelineContentTypeAtem.SSRCPROPS) {
+                                let ssrc = deviceState.video.superSourceProperties;
+                                if (ssrc)
+                                    deepExtend(ssrc, content.attributes);
+                            }
+                            break;
                         case mapping_1.MappingAtemType.Auxilliary:
                             if (tlObjectExt.isBackground) {
                                 break;
@@ -229,6 +240,9 @@ class AtemDevice extends device_1.Device {
         }
         for (let i = 0; i < this._device.state.info.superSourceBoxes; i++) {
             deviceState.video.superSourceBoxes[i] = JSON.parse(JSON.stringify(atem_state_1.Defaults.Video.SuperSourceBox));
+        }
+        if (this._device.state.video.superSourceProperties) {
+            deviceState.video.superSourceProperties = JSON.parse(JSON.stringify(atem_state_1.Defaults.Video.SuperSourceProperties));
         }
         return deviceState;
     }

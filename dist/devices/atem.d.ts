@@ -20,6 +20,7 @@ export declare enum TimelineContentTypeAtem {
     DSK = "dsk",
     AUX = "aux",
     SSRC = "ssrc",
+    SSRCPROPS = "ssrcProps",
     MEDIAPLAYER = "mp"
 }
 export declare class AtemDevice extends Device {

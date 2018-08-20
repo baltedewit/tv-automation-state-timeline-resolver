@@ -35,7 +35,8 @@ export declare enum MappingAtemType {
     DownStreamKeyer = 1,
     SuperSourceBox = 2,
     Auxilliary = 3,
-    MediaPlayer = 4
+    MediaPlayer = 4,
+    SuperSourceProperties = 5
 }
 export declare enum MappingLawoType {
     SOURCE = "source"

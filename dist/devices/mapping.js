@@ -7,6 +7,7 @@ var MappingAtemType;
     MappingAtemType[MappingAtemType["SuperSourceBox"] = 2] = "SuperSourceBox";
     MappingAtemType[MappingAtemType["Auxilliary"] = 3] = "Auxilliary";
     MappingAtemType[MappingAtemType["MediaPlayer"] = 4] = "MediaPlayer";
+    MappingAtemType[MappingAtemType["SuperSourceProperties"] = 5] = "SuperSourceProperties";
 })(MappingAtemType = exports.MappingAtemType || (exports.MappingAtemType = {}));
 var MappingLawoType;
 (function (MappingLawoType) {
