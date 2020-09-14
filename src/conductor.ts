@@ -39,6 +39,7 @@ import { VizMSEDevice, DeviceOptionsVizMSEInternal } from './devices/vizMSE'
 import PQueue from 'p-queue'
 import * as PAll from 'p-all'
 import PTimeout from 'p-timeout'
+import { Store } from './store'
 
 export { DeviceContainer }
 export { CommandWithContext }
@@ -111,6 +112,8 @@ export interface StatReport {
  * track of when to resolve the timeline and updates the devices with new states.
  */
 export class Conductor extends EventEmitter {
+
+	readonly store = new Store()
 
 	private _logDebug: boolean = false
 	private _timeline: TSRTimeline = []
@@ -315,7 +318,11 @@ export class Conductor extends EventEmitter {
 					deviceId,
 					deviceOptions,
 					getCurrentTime,
-					threadedClassOptions
+					threadedClassOptions,
+					{
+						setValue: (key: string, value: string | number | boolean) => this.store.setValue(key, value),
+						getValue: (key: string) => this.store.getValue(key),
+						watchValue: (key: string, cb: any) => this.store.watchValue(key, cb) }
 				)
 			} else if (deviceOptions.type === DeviceType.HTTPSEND) {
 				newDevice = await new DeviceContainer().create<HTTPSendDevice, typeof HTTPSendDevice>(

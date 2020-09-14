@@ -6,6 +6,7 @@ import {
 } from 'threadedclass'
 import { Device } from './device'
 import { DeviceType, DeviceOptionsAny } from '../types/src'
+import { IPCStoreMethods } from '../store'
 
 /**
  * A device container is a wrapper around a device in ThreadedClass class, it
@@ -31,7 +32,8 @@ export class DeviceContainer {
 		deviceId: string,
 		deviceOptions: DeviceOptionsAny,
 		getCurrentTime: () => number,
-		threadConfig?: ThreadedClassConfig
+		threadConfig?: ThreadedClassConfig,
+		storeMethods?: IPCStoreMethods
 	) {
 
 		this._deviceOptions = deviceOptions
@@ -47,7 +49,7 @@ export class DeviceContainer {
 		this._device = await threadedClass<T, TCtor>(
 			orgModule,
 			orgClass,
-			[ deviceId, deviceOptions, getCurrentTime ] as any, // TODO types
+			[ deviceId, deviceOptions, getCurrentTime, storeMethods ] as any, // TODO types
 			threadConfig
 		)
 

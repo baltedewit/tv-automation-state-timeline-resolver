@@ -32,6 +32,7 @@ import {
 	AtemConnection
 } from 'atem-state'
 import { DoOnTime, SendMode } from '../doOnTime'
+import { IPCStoreMethods, Subscription } from '../store'
 
 _.mixin({ deepExtend: underScoreDeepExtend(_) })
 
@@ -76,7 +77,10 @@ export class AtemDevice extends DeviceWithState<DeviceState> implements IDevice 
 
 	private _commandReceiver: CommandReceiver
 
-	constructor (deviceId: string, deviceOptions: DeviceOptionsAtemInternal, options) {
+	private _store: IPCStoreMethods
+	private _subscriptions = new Map<string, Subscription>()
+
+	constructor (deviceId: string, deviceOptions: DeviceOptionsAtemInternal, options, storeMethods: IPCStoreMethods) {
 		super(deviceId, deviceOptions, options)
 		if (deviceOptions.options) {
 			if (deviceOptions.options.commandReceiver) this._commandReceiver = deviceOptions.options.commandReceiver
@@ -86,6 +90,8 @@ export class AtemDevice extends DeviceWithState<DeviceState> implements IDevice 
 			return this.getCurrentTime()
 		}, SendMode.BURST, this._deviceOptions)
 		this.handleDoOnTime(this._doOnTime, 'Atem')
+
+		this._store = storeMethods
 	}
 
 	/**
@@ -383,6 +389,40 @@ export class AtemDevice extends DeviceWithState<DeviceState> implements IDevice 
 		// Ensure the state diffs the correct version
 		if (this._atem.state) {
 			this._state.version = this._atem.state.info.apiVersion
+		}
+
+		for (const ME of Object.values(newAtemState.video.mixEffects)) {
+			const mixEffect = ME as unknown as TimelineObjAtemME['content']['me']
+			if (mixEffect && mixEffect.input && typeof mixEffect.input === 'object') {
+				// we found a reactive value:
+				// subscribe for changes
+				const p = Promise.resolve()
+				const key = mixEffect.input.key
+				const curSubscription = this._subscriptions.get(key)
+				if (curSubscription) {
+					p.then(() => {
+						return curSubscription.unsubscribe()
+					})
+				}
+				p.then(() => {
+					return this._store.watchValue(key, (newValue: number) => {
+						const commands: Array<AtemCommandWithContext> = [
+							{ command: new AtemConnection.Commands.PreviewInputCommand(ME!.index, newValue), context: 'Responsive value change', timelineObjId: '' },
+							{ command: new AtemConnection.Commands.CutCommand(ME!.index), context: 'Responsive value change', timelineObjId: '' },
+						]
+						this._addToQueue(commands, this.getCurrentTime())
+					})
+				}).then(sub => {
+					this._subscriptions.set(key, sub)
+				})
+
+				// make sure timeline diff works
+				if (mixEffect.input.initialValue) {
+					mixEffect.input = mixEffect.input.initialValue
+				} else {
+					mixEffect.input = this._store.getValue(key) as number
+				}
+			}
 		}
 
 		return _.map(

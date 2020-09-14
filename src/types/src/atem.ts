@@ -127,12 +127,18 @@ export interface TimelineObjAtemBase extends TSRTimelineObjBase {
 type Without<T, U> = { [P in Exclude<keyof T, keyof U>]?: never }
 type XOR<T, U> = (T | U) extends object ? (Without<T, U> & U) | (Without<U, T> & T) : T | U
 
+// temporarily lives here for prototype purposes:
+export interface StoreValue<T extends number | string | boolean> {
+	key: string
+	initialValue?: T
+}
+
 export interface TimelineObjAtemME extends TimelineObjAtemBase {
 	content: {
 		deviceType: DeviceType.ATEM
 		type: TimelineContentTypeAtem.ME
 		me: XOR<{
-			input: number,
+			input: number | StoreValue<number>,
 			transition: AtemTransitionStyle
 		}, {
 			/** Cut directly to program */
